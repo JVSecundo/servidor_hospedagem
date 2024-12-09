@@ -211,7 +211,6 @@ docker logs web
 
 ## Suporte
 - Issues: GitHub Issues
-- Email: suporte@exemplo.com
 - Documentação: https://github.com/JVSecundo/servidor_hospedagem/tree/main?tab=MIT-1-ov-file
 
 ## Licença
