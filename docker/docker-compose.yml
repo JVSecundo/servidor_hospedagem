@@ -1,0 +1,16 @@
+version: '3.3'
+
+services:
+  web:
+    build: 
+      context: ./apache
+    container_name: web
+    ports:
+      - "80:80"
+    volumes:
+      - ./apache/index.html:/usr/local/apache2/htdocs/index.html
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge

@@ -1,0 +1,184 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY = 'localhost:5000'
+        APP_NAME = 'secure-web-app'
+        SONAR_HOST = 'http://localhost:9000'
+        BUILD_VERSION = "1.0.${BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                
+                script {
+                    sh "git rev-parse --short HEAD > .git/commit-id"
+                    commitId = readFile('.git/commit-id').trim()
+                }
+            }
+        }
+
+        stage('Security Scan - Source') {
+            steps {
+                parallel (
+                    "OWASP Dependency Check": {
+                        sh 'dependency-check.sh --project "Secure Web App" --scan . --format HTML'
+                    },
+                    "Static Code Analysis": {
+                        withSonarQubeEnv('SonarQube') {
+                            sh "mvn sonar:sonar \
+                                -Dsonar.projectKey=${APP_NAME} \
+                                -Dsonar.host.url=${SONAR_HOST} \
+                                -Dsonar.login=${SONAR_TOKEN}"
+                        }
+                    }
+                )
+            }
+        }
+
+        stage('Build') {
+            steps {
+                script {
+                    // Build da imagem Docker
+                    docker.build("${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_VERSION}")
+                    
+                    // Scan da imagem com Trivy
+                    sh """
+                        trivy image --severity HIGH,CRITICAL \
+                        ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_VERSION}
+                    """
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                script {
+                    // Testes unitários
+                    sh 'mvn test'
+                    
+                    // Testes de integração
+                    sh './tests/integration/run_tests.sh'
+                    
+                    // Testes de segurança
+                    sh './tests/security/pentest.sh'
+                }
+            }
+            post {
+                always {
+                    junit '**/target/surefire-reports/*.xml'
+                    recordIssues enabledForFailure: true, tools: [spotBugs()]
+                }
+            }
+        }
+
+        stage('Security Scan - Container') {
+            steps {
+                script {
+                    // Scan container
+                    sh """
+                        docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        aquasec/trivy:latest image \
+                        ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_VERSION}
+                    """
+                }
+            }
+        }
+
+        stage('Push') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    // Push para registry
+                    docker.withRegistry("http://${DOCKER_REGISTRY}") {
+                        docker.image("${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_VERSION}").push()
+                        docker.image("${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_VERSION}").push('latest')
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Staging') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    // Deploy para ambiente de staging
+                    sh """
+                        docker-compose -f docker-compose.staging.yml down || true
+                        docker-compose -f docker-compose.staging.yml up -d
+                    """
+                    
+                    // Testes de smoke
+                    sh './tests/smoke/smoke_test.sh'
+                }
+            }
+        }
+
+        stage('Security Scan - Running Container') {
+            steps {
+                script {
+                    // Scan do container em execução
+                    sh './tests/security/container_scan.sh'
+                    
+                    // Verificação de conformidade
+                    sh './tests/security/compliance_check.sh'
+                }
+            }
+        }
+
+        stage('Deploy to Production') {
+            when {
+                branch 'main'
+            }
+            steps {
+                timeout(time: 1, unit: 'HOURS') {
+                    input message: 'Approve deployment to production?'
+                }
+                
+                script {
+                    // Deploy para produção
+                    sh """
+                        docker-compose -f docker-compose.prod.yml down || true
+                        docker-compose -f docker-compose.prod.yml up -d
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Limpeza
+            cleanWs()
+            
+            // Notificações
+            script {
+                if (currentBuild.currentResult == 'SUCCESS') {
+                    slackSend channel: '#deployments',
+                              color: 'good',
+                              message: "Build successful: ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+                } else {
+                    slackSend channel: '#deployments',
+                              color: 'danger',
+                              message: "Build failed: ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+                }
+            }
+        }
+        
+        failure {
+            // Rollback em caso de falha
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    sh './scripts/rollback.sh'
+                }
+            }
+        }
+    }
+}

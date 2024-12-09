@@ -1,0 +1,1 @@
+{"virtualbox":{"/opt/docker":{"guestpath":"/opt/docker","hostpath":"C:/Users/joaov/OneDrive/Documentos/Seguran-a_da_Informa-o/docker","disabled":false,"__vagrantfile":true},"/vagrant":{"guestpath":"/vagrant","hostpath":"C:/Users/joaov/OneDrive/Documentos/Seguran-a_da_Informa-o","disabled":false,"__vagrantfile":true}}}

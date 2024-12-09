@@ -1,0 +1,47 @@
+# Apache logs
+/var/log/apache2/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 www-data adm
+    sharedscripts
+    postrotate
+        /etc/init.d/apache2 reload > /dev/null
+    endscript
+}
+
+# ModSecurity logs
+/var/log/modsecurity/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 www-data adm
+}
+
+# Application logs
+/opt/app/logs/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 644 www-data www-data
+}
+
+# Security audit logs
+/var/log/audit/*.log {
+    weekly
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root adm
+}
