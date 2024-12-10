@@ -60,7 +60,7 @@ servidor-web-seguro/
 1. **Preparação do Ambiente**
 ```powershell
 git clone [URL_DO_REPOSITORIO]
-cd servidor-web-seguro
+cd servidor_hospedagem
 ```
 
 2. **Iniciar Ambiente Virtualizado**
